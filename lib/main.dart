@@ -1,125 +1,314 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter_overlay_window/flutter_overlay_window.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:speech_to_text/speech_to_text.dart' as stt;
+import 'package:flutter_tts/flutter_tts.dart';
+import 'package:http/http.dart' as http;
+
+// 1. Overlay Entry Point (Screen Glow + Floating Mic Bar)
+@pragma("vm:entry-point")
+void overlayMain() {
+  runApp(const MaterialApp(
+    debugShowCheckedModeBanner: false,
+    home: OverlayAssistantUI(),
+  ));
+}
 
 void main() {
-  runApp(const MyApp());
+  WidgetsFlutterBinding.ensureInitialized();
+  runApp(const MaterialApp(
+    debugShowCheckedModeBanner: false,
+    home: BabyControlScreen(),
+  ));
 }
 
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+// 2. Main App Screen for Permissions & Activation
+class BabyControlScreen extends StatefulWidget {
+  const BabyControlScreen({super.key});
 
-  // This widget is the root of your application.
   @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Flutter Demo',
-      theme: ThemeData(
-        // This is the theme of your application.
-        //
-        // TRY THIS: Try running your application with "flutter run". You'll see
-        // the application has a purple toolbar. Then, without quitting the app,
-        // try changing the seedColor in the colorScheme below to Colors.green
-        // and then invoke "hot reload" (save your changes or press the "hot
-        // reload" button in a Flutter-supported IDE, or press "r" if you used
-        // the command line to start the app).
-        //
-        // Notice that the counter didn't reset back to zero; the application
-        // state is not lost during the reload. To reset the state, use hot
-        // restart instead.
-        //
-        // This works for code too, not just values: Most code changes can be
-        // tested with just a hot reload.
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
-        useMaterial3: true,
-      ),
-      home: const MyHomePage(title: 'Flutter Demo Home Page'),
+  State<BabyControlScreen> createState() => _BabyControlScreenState();
+}
+
+class _BabyControlScreenState extends State<BabyControlScreen> {
+  final stt.SpeechToText _speech = stt.SpeechToText();
+  bool _isListening = false;
+  String _status = "Baby Assistant Not Started";
+
+  @override
+  void initState() {
+    super.initState();
+    _requestAllPermissions();
+  }
+
+  Future<void> _requestAllPermissions() async {
+    await Permission.microphone.request();
+    bool overlayGranted = await FlutterOverlayWindow.isPermissionGranted();
+    if (!overlayGranted) {
+      await FlutterOverlayWindow.requestPermission();
+    }
+    _initWakeWordListener();
+  }
+
+  void _initWakeWordListener() async {
+    bool available = await _speech.initialize(
+      onStatus: (val) {
+        if (val == 'done' || val == 'notListening') {
+          _restartListening();
+        }
+      },
+      onError: (val) => _restartListening(),
+    );
+
+    if (available) {
+      _startListeningWakeWord();
+    }
+  }
+
+  void _startListeningWakeWord() {
+    setState(() => _isListening = true);
+    _speech.listen(
+      onResult: (val) {
+        String heard = val.recognizedWords.toLowerCase();
+        if (heard.contains("baby")) {
+          _speech.stop();
+          _triggerAssistantOverlay();
+        }
+      },
+      listenFor: const Duration(seconds: 30),
+      pauseFor: const Duration(seconds: 3),
+      partialResults: true,
+      cancelOnError: false,
+      listenMode: stt.ListenMode.dictation,
     );
   }
-}
 
-class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key, required this.title});
-
-  // This widget is the home page of your application. It is stateful, meaning
-  // that it has a State object (defined below) that contains fields that affect
-  // how it looks.
-
-  // This class is the configuration for the state. It holds the values (in this
-  // case the title) provided by the parent (in this case the App widget) and
-  // used by the build method of the State. Fields in a Widget subclass are
-  // always marked "final".
-
-  final String title;
-
-  @override
-  State<MyHomePage> createState() => _MyHomePageState();
-}
-
-class _MyHomePageState extends State<MyHomePage> {
-  int _counter = 0;
-
-  void _incrementCounter() {
-    setState(() {
-      // This call to setState tells the Flutter framework that something has
-      // changed in this State, which causes it to rerun the build method below
-      // so that the display can reflect the updated values. If we changed
-      // _counter without calling setState(), then the build method would not be
-      // called again, and so nothing would appear to happen.
-      _counter++;
+  void _restartListening() {
+    Future.delayed(const Duration(milliseconds: 500), () {
+      if (mounted) _startListeningWakeWord();
     });
   }
 
+  Future<void> _triggerAssistantOverlay() async {
+    bool isActive = await FlutterOverlayWindow.isActive();
+    if (!isActive) {
+      await FlutterOverlayWindow.showOverlay(
+        enableDrag: false,
+        overlayTitle: "Baby AI Active",
+        overlayContent: "Listening...",
+        flag: OverlayFlag.defaultFlag,
+        visibility: NotificationVisibility.visibilityPublic,
+        positionGravity: PositionGravity.auto,
+        height: WindowSize.fullCover,
+        width: WindowSize.fullCover,
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    // This method is rerun every time setState is called, for instance as done
-    // by the _incrementCounter method above.
-    //
-    // The Flutter framework has been optimized to make rerunning build methods
-    // fast, so that you can just rebuild anything that needs updating rather
-    // than having to individually change instances of widgets.
     return Scaffold(
+      backgroundColor: const Color(0xFF121212),
       appBar: AppBar(
-        // TRY THIS: Try changing the color here to a specific color (to
-        // Colors.amber, perhaps?) and trigger a hot reload to see the AppBar
-        // change color while the other colors stay the same.
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        // Here we take the value from the MyHomePage object that was created by
-        // the App.build method, and use it to set our appbar title.
-        title: Text(widget.title),
+        title: const Text("Baby AI Assistant"),
+        backgroundColor: Colors.black,
       ),
       body: Center(
-        // Center is a layout widget. It takes a single child and positions it
-        // in the middle of the parent.
         child: Column(
-          // Column is also a layout widget. It takes a list of children and
-          // arranges them vertically. By default, it sizes itself to fit its
-          // children horizontally, and tries to be as tall as its parent.
-          //
-          // Column has various properties to control how it sizes itself and
-          // how it positions its children. Here we use mainAxisAlignment to
-          // center the children vertically; the main axis here is the vertical
-          // axis because Columns are vertical (the cross axis would be
-          // horizontal).
-          //
-          // TRY THIS: Invoke "debug painting" (choose the "Toggle Debug Paint"
-          // action in the IDE, or press "p" in the console), to see the
-          // wireframe for each widget.
           mainAxisAlignment: MainAxisAlignment.center,
-          children: <Widget>[
-            const Text(
-              'You have pushed the button this many times:',
-            ),
+          children: [
+            const Icon(Icons.graphic_eq, color: Colors.greenAccent, size: 80),
+            const SizedBox(height: 20),
             Text(
-              '$_counter',
-              style: Theme.of(context).textTheme.headlineMedium,
+              _status,
+              style: const TextStyle(color: Colors.white, fontSize: 18),
+            ),
+            const SizedBox(height: 30),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.greenAccent,
+                foregroundColor: Colors.black,
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              ),
+              onPressed: () => _triggerAssistantOverlay(),
+              child: const Text("Test Overlay Glow & Mic"),
             ),
           ],
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _incrementCounter,
-        tooltip: 'Increment',
-        child: const Icon(Icons.add),
-      ), // This trailing comma makes auto-formatting nicer for build methods.
+    );
+  }
+}
+
+// 3. Floating Overlay UI (Side Edge Glow + Floating Mic Pill)
+class OverlayAssistantUI extends StatefulWidget {
+  const OverlayAssistantUI({super.key});
+
+  @override
+  State<OverlayAssistantUI> createState() => _OverlayAssistantUIState();
+}
+
+class _OverlayAssistantUIState extends State<OverlayAssistantUI>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _glowController;
+  final FlutterTts _tts = FlutterTts();
+  final stt.SpeechToText _speech = stt.SpeechToText();
+  String _recognizedText = "बोलिए, मैं सुन रही हूँ...";
+  bool _isProcessing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _glowController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 2),
+    )..repeat(reverse: true);
+
+    _initTTS();
+    _listenUserVoice();
+  }
+
+  void _initTTS() async {
+    await _tts.setLanguage("hi-IN");
+    await _tts.setPitch(1.0);
+  }
+
+  void _listenUserVoice() async {
+    bool available = await _speech.initialize();
+    if (available) {
+      _speech.listen(
+        onResult: (result) {
+          setState(() {
+            _recognizedText = result.recognizedWords;
+          });
+          if (result.finalResult) {
+            _askBabyAI(result.recognizedWords);
+          }
+        },
+      );
+    }
+  }
+
+  Future<void> _askBabyAI(String prompt) async {
+    if (_isProcessing || prompt.isEmpty) return;
+    setState(() {
+      _isProcessing = true;
+      _recognizedText = "सोच रही हूँ...";
+    });
+
+    // Gemini API Request (Add your Gemini API Key here)
+    const apiKey = "YOUR_GEMINI_API_KEY";
+    final url = Uri.parse(
+        "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=$apiKey");
+
+    try {
+      final response = await http.post(
+        url,
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({
+          "contents": [
+            {
+              "parts": [
+                {
+                  "text":
+                      "You are Baby, a personal AI voice assistant. Give very short, sweet, single-sentence replies in Hindi: $prompt"
+                }
+              ]
+            }
+          ]
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        String reply = data['candidates'][0]['content']['parts'][0]['text'];
+        setState(() => _recognizedText = reply);
+        await _tts.speak(reply);
+      } else {
+        setState(() => _recognizedText = "API में कुछ समस्या आई");
+      }
+    } catch (e) {
+      setState(() => _recognizedText = "इंटरनेट कनेक्शन जांचें");
+    } finally {
+      setState(() => _isProcessing = false);
+      Future.delayed(const Duration(seconds: 4), () {
+        FlutterOverlayWindow.closeOverlay();
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _glowController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: Stack(
+        children: [
+          // Screen Side Edge Lighting Glow Effect
+          AnimatedBuilder(
+            animation: _glowController,
+            builder: (context, child) {
+              return Container(
+                decoration: BoxDecoration(
+                  border: Border.all(
+                    color: Colors.greenAccent.withOpacity(0.4 + (_glowController.value * 0.6)),
+                    width: 6.0,
+                  ),
+                ),
+              );
+            },
+          ),
+
+          // Bottom Floating Overlay Pill
+          Align(
+            alignment: Alignment.bottomCenter,
+            child: Container(
+              margin: const EdgeInsets.only(bottom: 28, left: 16, right: 16),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1E1E1E).withOpacity(0.95),
+                borderRadius: BorderRadius.circular(32),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.5),
+                    blurRadius: 10,
+                    spreadRadius: 2,
+                  ),
+                ],
+              ),
+              child: Row(
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.close, color: Colors.white70),
+                    onPressed: () => FlutterOverlayWindow.closeOverlay(),
+                  ),
+                  Expanded(
+                    child: Text(
+                      _recognizedText,
+                      style: const TextStyle(color: Colors.white, fontSize: 14),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: const BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Colors.greenAccent,
+                    ),
+                    child: const Icon(Icons.mic, color: Colors.black, size: 22),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
