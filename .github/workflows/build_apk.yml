@@ -27,14 +27,7 @@ jobs:
         run: flutter pub get
 
       - name: Build Release APK
-        run: |
-          cd android
-          ./gradlew assembleRelease \
-            -Dorg.gradle.jvmargs="-Xmx4g -XX:+HeapDumpOnOutOfMemoryError" \
-            -Pkotlin.compiler.execution.strategy="in-process" \
-            -Pandroid.suppressUnsupportedCompileSdk=34 \
-            --no-daemon \
-            --stacktrace
+        run: flutter build apk --release --no-tree-shake-icons
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
