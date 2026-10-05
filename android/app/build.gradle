@@ -10,12 +10,12 @@ android {
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_1_8
-        targetCompatibility = JavaVersion.VERSION_1_8
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
     }
 
     kotlinOptions {
-        jvmTarget = "1.8"
+        jvmTarget = "17"
     }
 
     defaultConfig {
@@ -35,11 +35,4 @@ android {
 
 flutter {
     source = "../.."
-}
-
-// यह ब्लॉक सभी पुराने प्लगइन्स को compileSdk दे देगा बिना किसी क्रैश के
-gradle.beforeProject { project ->
-    project.ext.set("flutter.compileSdkVersion", 34)
-    project.ext.set("flutter.minSdkVersion", 21)
-    project.ext.set("flutter.targetSdkVersion", 34)
 }
