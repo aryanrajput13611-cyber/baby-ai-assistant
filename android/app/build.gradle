@@ -4,9 +4,21 @@ plugins {
     id "dev.flutter.flutter-gradle-plugin"
 }
 
+def localProperties = new Properties()
+def localPropertiesFile = rootProject.file("local.properties")
+if (localPropertiesFile.exists()) {
+    localPropertiesFile.withReader("UTF-8") { reader ->
+        localProperties.load(reader)
+    }
+}
+
+def flutterVersionCode = localProperties.getProperty("flutter.versionCode") ?: "1"
+def flutterVersionName = localProperties.getProperty("flutter.versionName") ?: "1.0"
+
 android {
     namespace = "com.baby.baby_assistant"
     compileSdk = 34
+    compileSdkVersion 34
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
@@ -21,9 +33,11 @@ android {
     defaultConfig {
         applicationId = "com.baby.baby_assistant"
         minSdk = 21
+        minSdkVersion 21
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0"
+        targetSdkVersion 34
+        versionCode = flutterVersionCode.toInteger()
+        versionName = flutterVersionName
     }
 
     buildTypes {
